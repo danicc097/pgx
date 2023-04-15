@@ -256,10 +256,10 @@ func (rows *baseRows) Scan(dest ...any) error {
 			rows.scanTypes[i] = reflect.TypeOf(dest[i])
 		}
 
-		fmt.Printf("-----\n")
-		fmt.Printf("fieldDescriptions[i]: %v\n", fieldDescriptions[i])
-		fmt.Printf("values[i]: %v\n", string(values[i]))
-		fmt.Printf("dst: %s\n", dst)
+		// fmt.Printf("-----\n")
+		// fmt.Printf("fieldDescriptions[i]: %v\n", fieldDescriptions[i])
+		// fmt.Printf("values[i]: %v\n", string(values[i]))
+		// fmt.Printf("dst: %s\n", dst)
 		err := rows.scanPlans[i].Scan(values[i], dst)
 		if err != nil {
 			fmt.Printf("ERROR---values[i]: %v\n", string(values[i]))
