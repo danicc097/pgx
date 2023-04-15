@@ -771,6 +771,62 @@ func TestRowToStructByNameLaxRowValue(t *testing.T) {
 	})
 }
 
+type Team struct {
+	TeamID int `json:"teamID" db:"team_id"`
+	// CreatedAt time.Time `json:"createdAt" db:"created_at"`
+	// UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
+	Name      string `json:"name" db:"name"`
+	ProjectID int    `json:"projectID" db:"project_id"`
+
+	Users *[]User `json:"users" db:"users"`
+
+	_exists, _deleted bool
+}
+
+type User struct {
+	UserID int    `json:"userID" db:"user_id"`
+	Name   string `json:"name" db:"name"`
+	// FIXME array scan via RowToStructByName if el is struct.
+	// right now it scans in order, therefore errors out
+	// if num of fields don't match or they're out of order
+	Teams []Team `json:"teams" db:"teams"`
+}
+
+func TestRowToStructByNameLaxArrayAggregate(t *testing.T) {
+	defaultConnTestRunner.RunTest(context.Background(), t, func(ctx context.Context, t testing.TB, conn *pgx.Conn) {
+		pgxtest.SkipCockroachDB(t, conn, "")
+
+		rows, _ := conn.Query(ctx, `
+		WITH user_team AS (
+			SELECT 1 AS user_id, 1 AS team_id
+			UNION ALL
+			SELECT 1 AS user_id, 2 AS team_id
+		), users AS (
+			SELECT 1 AS user_id, 'John Doe' AS name
+		),teams AS (
+			SELECT 1 AS team_id, 'team 1' AS name, 1 as project_id
+			UNION ALL
+			SELECT 2 AS team_id, 'team 2' AS name, 2 as project_id
+		)
+		SELECT users.user_id
+		,joined_teams.teams as teams
+		FROM users
+		left join (
+			select
+				user_team.user_id as user_team_user_id
+				, array_agg(teams.*) as teams
+				from user_team
+				join teams using (team_id)
+				group by user_team_user_id
+			) as joined_teams on joined_teams.user_team_user_id = users.user_id
+		`)
+		slice, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[User])
+
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, slice, []User{{UserID: 1, Teams: []Team{{TeamID: 1, Name: "team 1", ProjectID: 1}, {TeamID: 2, Name: "team 2", ProjectID: 2}}}})
+	})
+}
+
 func ExampleRowToStructByNameLax() {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
