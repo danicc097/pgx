@@ -415,7 +415,7 @@ func TestConnQueryReadWrongTypeError(t *testing.T) {
 		t.Fatal("Expected Rows to have an error after an improper read but it didn't")
 	}
 
-	if rows.Err().Error() != "can't scan into dest[0]: cannot scan int4 (OID 23) in binary format into *time.Time" {
+	if rows.Err().Error() != "can't scan \"n\" into dest[0]: cannot scan int4 (OID 23) in binary format into *time.Time" {
 		t.Fatalf("Expected different Rows.Err(): %v", rows.Err())
 	}
 
@@ -563,7 +563,6 @@ func TestConnQueryErrorWhileReturningRows(t *testing.T) {
 			ensureConnValid(t, conn)
 		}()
 	}
-
 }
 
 func TestQueryEncodeError(t *testing.T) {
@@ -2000,7 +1999,6 @@ insert into products (name, price) values
 	}
 
 	rows, err := conn.Query(ctx, "select name, price from products where price < $1 order by price desc", 12)
-
 	// It is unnecessary to check err. If an error occurred it will be returned by rows.Err() later. But in rare
 	// cases it may be useful to detect the error as early as possible.
 	if err != nil {

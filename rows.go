@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -252,13 +253,19 @@ func (rows *baseRows) Scan(dest ...any) error {
 		}
 
 		if rows.scanTypes[i] != reflect.TypeOf(dst) {
+			fmt.Fprintf(os.Stderr, "%q has unmatching type\n", fieldDescriptions[i].Name)
 			rows.scanPlans[i] = m.PlanScan(fieldDescriptions[i].DataTypeOID, fieldDescriptions[i].Format, dest[i])
 			rows.scanTypes[i] = reflect.TypeOf(dest[i])
 		}
 
+		// fmt.Printf("-----\n")
+		// fmt.Printf("fieldDescriptions[i]: %v\n", fieldDescriptions[i])
+		// fmt.Printf("values[i]: %v\n", string(values[i]))
+		// fmt.Printf("dst: %s\n", dst)
 		err := rows.scanPlans[i].Scan(values[i], dst)
 		if err != nil {
-			err = ScanArgError{ColumnIndex: i, Err: err}
+			fmt.Fprintf(os.Stderr, "ERROR---values[i]: %v\n", string(values[i]))
+			err = ScanArgError{ColumnIndex: i, Err: err, FieldName: fieldDescriptions[i].Name}
 			rows.fatal(err)
 			return err
 		}
@@ -321,10 +328,11 @@ func (rows *baseRows) Conn() *Conn {
 type ScanArgError struct {
 	ColumnIndex int
 	Err         error
+	FieldName   string
 }
 
 func (e ScanArgError) Error() string {
-	return fmt.Sprintf("can't scan into dest[%d]: %v", e.ColumnIndex, e.Err)
+	return fmt.Sprintf("can't scan %q into dest[%d]: %v", e.FieldName, e.ColumnIndex, e.Err)
 }
 
 func (e ScanArgError) Unwrap() error {

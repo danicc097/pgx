@@ -80,7 +80,7 @@ func TestForEachRowScanError(t *testing.T) {
 			actualResults = append(actualResults, []any{a, b})
 			return nil
 		})
-		require.EqualError(t, err, "can't scan into dest[0]: cannot scan text (OID 25) in text format into *int")
+		require.EqualError(t, err, "can't scan \"?column?\" into dest[0]: cannot scan text (OID 25) in text format into *int")
 		require.Equal(t, pgconn.CommandTag{}, ct)
 	})
 }
@@ -733,6 +733,97 @@ func TestRowToStructByNameLaxEmbeddedStruct(t *testing.T) {
 		rows, _ = conn.Query(ctx, `select 'Smith' as last_name, n as age, null as ignore from generate_series(0, 9) n`)
 		_, err = pgx.CollectRows(rows, pgx.RowToAddrOfStructByNameLax[person])
 		assert.ErrorContains(t, err, "struct doesn't have corresponding row field ignore")
+	})
+}
+
+func TestRowToStructByNameLaxRowValue(t *testing.T) {
+	type AnotherTable struct{}
+	type User struct {
+		UserID int    `json:"userId" db:"user_id"`
+		Name   string `json:"name" db:"name"`
+	}
+	type UserAPIKey struct {
+		UserAPIKeyID int `json:"userApiKeyId" db:"user_api_key_id"`
+		UserID       int `json:"userId" db:"user_id"`
+
+		User         *User         `json:"user" db:"user"`
+		AnotherTable *AnotherTable `json:"anotherTable" db:"another_table"`
+	}
+
+	defaultConnTestRunner.RunTest(context.Background(), t, func(ctx context.Context, t testing.TB, conn *pgx.Conn) {
+		pgxtest.SkipCockroachDB(t, conn, "")
+
+		rows, _ := conn.Query(ctx, `
+		WITH user_api_keys AS (
+			SELECT 1 AS user_id, 101 AS user_api_key_id, 'abc123' AS api_key
+		), users AS (
+			SELECT 1 AS user_id, 'John Doe' AS name
+		)
+		SELECT user_api_keys.user_api_key_id, user_api_keys.user_id, row(users.*) AS user
+		FROM user_api_keys
+		LEFT JOIN users ON users.user_id = user_api_keys.user_id
+		WHERE user_api_keys.api_key = 'abc123';
+		`)
+		slice, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[UserAPIKey])
+
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, slice, []UserAPIKey{{UserAPIKeyID: 101, UserID: 1, User: &User{UserID: 1, Name: "John Doe"}, AnotherTable: nil}})
+	})
+}
+
+type Team struct {
+	TeamID int `json:"teamID" db:"team_id"`
+	// CreatedAt time.Time `json:"createdAt" db:"created_at"`
+	// UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
+	ProjectID int    `json:"projectID" db:"project_id"`
+	Name      string `json:"name" db:"name"`
+
+	Users *[]User `json:"users" db:"users"`
+
+	_exists, _deleted bool
+}
+
+type User struct {
+	UserID int    `json:"userID" db:"user_id"`
+	Name   string `json:"name" db:"name"`
+	// FIXME array scan via RowToStructByName if el is struct.
+	// right now it scans in order, therefore errors out
+	// if they're out of order
+	Teams []Team `json:"teams" db:"teams"`
+}
+
+func TestRowToStructByNameLaxArrayAggregate(t *testing.T) {
+	defaultConnTestRunner.RunTest(context.Background(), t, func(ctx context.Context, t testing.TB, conn *pgx.Conn) {
+		pgxtest.SkipCockroachDB(t, conn, "")
+
+		rows, _ := conn.Query(ctx, `
+		WITH user_team AS (
+			SELECT 1 AS user_id, 1 AS team_id
+			UNION ALL
+			SELECT 1 AS user_id, 2 AS team_id
+		), users AS (
+			SELECT 1 AS user_id, 'John Doe' AS name
+		),teams AS (
+			SELECT 1 AS team_id, 'team 1' AS name, 1 as project_id
+			UNION ALL
+			SELECT 2 AS team_id, 'team 2' AS name, 2 as project_id
+		)
+		SELECT users.user_id
+		,joined_teams.teams as teams
+		FROM users
+		left join (
+			select
+				user_team.user_id as user_team_user_id
+				, array_agg(teams.*) as teams
+				from user_team
+				join teams using (team_id)
+				group by user_team_user_id
+			) as joined_teams on joined_teams.user_team_user_id = users.user_id
+		`)
+		slice, err := pgx.CollectRows(rows, pgx.RowToStructByNameLax[User])
+
+		assert.NoError(t, err)
+		assert.ElementsMatch(t, slice, []User{{UserID: 1, Teams: []Team{{TeamID: 1, Name: "team 1", ProjectID: 1}, {TeamID: 2, Name: "team 2", ProjectID: 2}}}})
 	})
 }
 
