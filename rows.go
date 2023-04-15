@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"time"
@@ -252,6 +253,7 @@ func (rows *baseRows) Scan(dest ...any) error {
 		}
 
 		if rows.scanTypes[i] != reflect.TypeOf(dst) {
+			fmt.Fprintf(os.Stderr, "%q has unmatching type\n", fieldDescriptions[i].Name)
 			rows.scanPlans[i] = m.PlanScan(fieldDescriptions[i].DataTypeOID, fieldDescriptions[i].Format, dest[i])
 			rows.scanTypes[i] = reflect.TypeOf(dest[i])
 		}
@@ -262,7 +264,7 @@ func (rows *baseRows) Scan(dest ...any) error {
 		// fmt.Printf("dst: %s\n", dst)
 		err := rows.scanPlans[i].Scan(values[i], dst)
 		if err != nil {
-			fmt.Printf("ERROR---values[i]: %v\n", string(values[i]))
+			fmt.Fprintf(os.Stderr, "ERROR---values[i]: %v\n", string(values[i]))
 			err = ScanArgError{ColumnIndex: i, Err: err, FieldName: fieldDescriptions[i].Name}
 			rows.fatal(err)
 			return err
@@ -674,7 +676,6 @@ func (rs *namedStructRowScanner) appendScanTargets(dstElemValue reflect.Value, s
 			}
 			scanTargets[fpos] = dstElemValue.Field(i).Addr().Interface()
 		}
-		fmt.Printf("scanTargets: %s\n", scanTargets)
 	}
 
 	return scanTargets, err

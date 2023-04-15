@@ -80,7 +80,7 @@ func TestForEachRowScanError(t *testing.T) {
 			actualResults = append(actualResults, []any{a, b})
 			return nil
 		})
-		require.EqualError(t, err, "can't scan into dest[0]: cannot scan text (OID 25) in text format into *int")
+		require.EqualError(t, err, "can't scan \"?column?\" into dest[0]: cannot scan text (OID 25) in text format into *int")
 		require.Equal(t, pgconn.CommandTag{}, ct)
 	})
 }
@@ -775,8 +775,8 @@ type Team struct {
 	TeamID int `json:"teamID" db:"team_id"`
 	// CreatedAt time.Time `json:"createdAt" db:"created_at"`
 	// UpdatedAt time.Time `json:"updatedAt" db:"updated_at"`
-	Name      string `json:"name" db:"name"`
 	ProjectID int    `json:"projectID" db:"project_id"`
+	Name      string `json:"name" db:"name"`
 
 	Users *[]User `json:"users" db:"users"`
 
@@ -788,7 +788,7 @@ type User struct {
 	Name   string `json:"name" db:"name"`
 	// FIXME array scan via RowToStructByName if el is struct.
 	// right now it scans in order, therefore errors out
-	// if num of fields don't match or they're out of order
+	// if they're out of order
 	Teams []Team `json:"teams" db:"teams"`
 }
 
